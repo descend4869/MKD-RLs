@@ -149,6 +149,26 @@ def adjust_lr(optimizer, epoch, args):
         param_group['lr'] = cur_lr
 
         return cur_lr
+    
+# New: 用于学生模型为ViT架构时的学习率调整函数，新增了warm_up阶段
+def adjust_lr_vit(optimizer, epoch, args):
+    cur_lr = 0.
+
+    # Warm-up phase
+    if epoch < args.warmup_epochs:
+        cur_lr = args.init_lr * (epoch + 1) / args.warmup_epochs
+    else:
+        # Learning rate adjustment after warm-up
+        if args.lr_type == 'multistep':
+            cur_lr = args.init_lr * 0.1 ** bisect_right(args.milestones, epoch)
+        elif args.lr_type == 'cosine':
+            cur_lr = args.init_lr * 0.5 * (1. + math.cos(np.pi * (epoch - args.warmup_epochs) / (args.epochs - args.warmup_epochs)))
+
+    # Update optimizer learning rate
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = cur_lr
+
+    return cur_lr
 
 
 

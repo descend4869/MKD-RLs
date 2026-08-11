@@ -1,6 +1,6 @@
-# Multi-Teacher Knowledge Distillation with Reinforcement Learning for Visual Recognition
+# Adaptive Teacher Weighting for Multi-Teacher Distillation with Soft Actor-Critic and Hierarchical Design for Visual Recognition
 
-This project provides source code for official implementation of  Multi-Teacher Knowledge Distillation with Reinforcement Learning for Visual Recognition (MTKD-RL):
+This project provides the source code of Multi-Teacher Knowledge Distillation with with Soft Actor-Critic and Hierarchical Design (MKD-RLs):
 
 ## Installation
 
@@ -12,7 +12,7 @@ Python 3.9
 
 CUDA 11.8
 
-please install python packages:
+you can install python packages by:
 
 ```
 pip install -r requirements.txt
@@ -24,7 +24,7 @@ pip install -r requirements.txt
 
 CIFAR-100 : [download](http://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz)
 
-unzip to the `./data` folder
+unzip to your dataset folder
 
 ### Training teacher networks
 
@@ -33,63 +33,55 @@ python train_baseline.py --model [model_name] \
     --data-folder [your dataset path] \
     --checkpoint-dir [your checkpoint saved path]
 ```
-* `--model`: specify the teacher model, such as `RegNetY_400MF`,`RegNetX_400MF`, `resnet32x4`, `wrn_28_4`
-* `--data-folder`: specify the folder of dataset
-* `--checkpoint-dir`: specify the folder for storing checkpoints
+* `--model`: specify the teacher model
+* `--data-folder`: specify the dataset folder
+* `--checkpoint-dir`: specify checkpoints folder
+
+configure the `setting.py` with `teacher_name:teacher_path`, then you can use these pretained models in subsequent experiments.
 
 
 ### Training the student network with Multi-teacher KD
-configure the `setting.py` with `teacher_name:teacher_path`:
-```
-teacher_model_path_dict = {
-    'RegNetY_400MF': '[pre-traiend model pth path]',
-    'RegNetX_400MF': '[pre-traiend model pth path]',
-    'resnet32x4': '[pre-traiend model pth path]',
-    'wrn_28_4': '[pre-traiend model pth path]',
-    }
-```
-#### AVER: Multi-teacher KD with equal weights
-Distill a student ShuffleV2 with the teacher pool (RegNetY_400MF, RegNetX_400MF, resnet32x4, wrn_28_4)
+
+#### MTKD-RL
 
 ```
-python train_student_avg.py \
+python train_student_rl.py \
     --data [your dataset path] \
-    --arch ShuffleV2 \
+    --arch [your student name] \
+    --dynamic \
     --checkpoint-dir [your checkpoint saved path] \
-    --teacher-name-list RegNetY_400MF RegNetX_400MF resnet32x4 wrn_28_4 \
-    --dist-backend 'nccl' \
+    --teacher-name-list [your teacher names, separated by spaces] \
     --world-size 1 \
     --rank 0 
 ```
 
-* `--data`: specify the folder of dataset
-* `--arch`: specify the student architecture, e.g. `ShuffleV2`
-* `--checkpoint-dir`: specify the folder for storing checkpoints
+* `--data`: specify the dataset folder
+* `--arch`: specify the student architecture, such as `MobileNetV2`
+* `--dynamic`: specify whether using dynamic weight aggregation strategy. 
+* `--checkpoint-dir`: specify checkpoints folder
 * `--teacher-name-list`: specify the teacher names to construct the teacher pool, e.g. `RegNetY_400MF`, `RegNetX_400MF`, `resnet32x4`
 
 
 
 
 
-#### MTKD-RL (Ours)
-Distill a student ShuffleV2 with the teacher pool (RegNetY_400MF, RegNetX_400MF, resnet32x4, wrn_28_4)
+#### MTKD-SAC and MTKD-HRL (Ours)
+
 ```
-python train_student_rl.py \
+python train_student_sac.py \
     --data [your dataset path] \
-    --arch ShuffleV2 \
-    --dynamic \
+    --arch [your student name] \
     --checkpoint-dir [your checkpoint saved path] \
-    --teacher-name-list RegNetY_400MF RegNetX_400MF resnet32x4 wrn_28_4 \
-    --dist-backend 'nccl' \
+    --teacher-name-list [your teacher names, separated by spaces] \
     --world-size 1 \
     --rank 0 
 ```
-* `--dynamic`: specify whether using dynamic weight aggregation strategy. We found that various networks may achieve different performance under with or without  `dynamic`.
+`train_student_sac.py` can be replaced by other python files: 
+* `train_student_sac2.py` uses critic-accelerated SAC
+* `train_student_hrl.py` only has KD temperature as high-level output
+* `train_student_hrl2.py` adds teacher importance in high-level output
 
-| Student | W/ dynamic | W/O dynamic |
-| :--: | :--: | :--: |
-|  RegNetX-200MF | 79.93| 80.58|
-|  MobileNetV2 | 74.77 | 74.29|
-|  ShuffleNetv2 | 78.74 | 78.35 |
-|  ResNet-56 | 74.95 | 75.51 |
+
+
+
 

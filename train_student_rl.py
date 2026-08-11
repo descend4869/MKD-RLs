@@ -18,15 +18,18 @@ import torch.utils.data.distributed
 import torchvision.datasets as datasets
 import torchvision.models as models
 import torchvision.transforms as transforms
+import timm
 
 
 from train_loops import train, test
 from torch.utils.tensorboard import SummaryWriter
 from models import model_dict
-from setting import  teacher_model_path_dict
-from dataset.cifar100 import get_cifar100_dataloaders
+from setting import  teacher_model_path_dict, cifar10_teacher_model_path_dict
+from dataset.cifar100 import get_cifar100_dataloaders; from dataset.imagenet import get_imagenet_dataloaders
+from dataset.cifar10 import get_cifar10_dataloaders
 from utils import set_logger
 from models.util import Regress, TransFeat
+from models.TeacherWrapper import TeacherWrapper
 
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
@@ -64,7 +67,9 @@ parser.add_argument('--world-size', default=-1, type=int,
                     help='number of nodes for distributed training')
 parser.add_argument('--rank', default=-1, type=int,
                     help='node rank for distributed training')
-parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
+# parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
+#                     help='url used to set up distributed training')
+parser.add_argument('--dist-url', default='tcp://127.0.0.1:23456', type=str,
                     help='url used to set up distributed training')
 parser.add_argument('--dist-backend', default='nccl', type=str,
                     help='distributed backend')
@@ -92,11 +97,11 @@ parser.add_argument('--lr-type', default='multistep', type=str, help='learning r
 parser.add_argument('--feat-kd', default='mse', type=str, help='feature kd loss')
 parser.add_argument('--kd-T', type=int, default=4, help='temperature')
 parser.add_argument('--agent-step', type=int, default=1000, help='agent optimization step')
-parser.add_argument('--checkpoint-dir', default='./checkpoint', type=str, help='checkpoint directory')
+#parser.add_argument('--checkpoint-dir', default='./checkpoint', type=str, help='checkpoint directory')
+parser.add_argument('--checkpoint-dir', default='/data/myh/checkpoints/mkd_checkpoints/student_cifar10', type=str, help='checkpoint directory')
 parser.add_argument('--teacher-name-list', default=['resnet32x4', 'wrn_28_4'], type=str, nargs='+', help='teacher models')
-parser.add_argument('--dataset', type=str, default='cifar100', choices=['cifar100', 'imagenet', 'tinyimagenet', 'dogs', 'cub_200_2011', 'mit67'], help='dataset')
+parser.add_argument('--dataset', type=str, default='cifar100', choices=['cifar10', 'cifar100', 'imagenet', 'tinyimagenet', 'dogs', 'cub_200_2011', 'mit67'], help='dataset')
 parser.add_argument('--trial', type=str, default='1', help='trial id')
-
 
 def get_tensorboard_path(path):
     time_stamp = datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
@@ -163,18 +168,21 @@ def main():
 
 def get_agent(teacher_models, args):
     teacher_num = len(teacher_models)
-    x = torch.rand(args.res).cuda()
-    logits_dim = 0
-    feature_dim = 0
-    feature_dims = []
+    x = torch.rand(args.res).cuda() #由224~229行对args.res的定义可知,x是(1,3,32,32)或(1,3,224,224)形状的vector
+    logits_dim = 0 #累加所有教师模型分类输出维度的总和。
+    feature_dim = 0 #累加所有教师模型最后一层特征维度的总和。
+    feature_dims = [] #记录每个教师模型倒数第二层特征的形状。
     policy_input_size = []
     for t in teacher_models :
-        feature, logits = t(x, is_feat=True)
-        logits_dim += logits.size(1)
-        feature_dim += feature[-1].size(1)
-        feature_dims.append(feature[-2].size())
+        feature, logits = t(x, is_feat=True) #feature是一个列表,包含教师模型中不同层的特征.每个元素的形状取决于教师模型的架构。
+        logits_dim += logits.size(1) #logits是教师模型的分类输出,形状是(1,num_classes)
+        # print(len(feature))
+        # print(feature[-1].shape)
+        # print(feature[-2].shape)
+        feature_dim += feature[-1].size(1) #若教师模型是ResNet-like网络,则倒数第一层feature[-1]形状为(1,D).
+        feature_dims.append(feature[-2].size()) #教师为ResNet-like网络,则倒数第二层feature[-2]形状为(1,C,H,W).
         policy_input_size.append(feature[-1].size(1) + logits.size(1) + 3)
-        
+        #策略网络的输出维度,由"最后一层特征的维度 + 分类输出的维度 + 固定偏移量"组成.
     agent = model_dict['PolicyTrans'](policy_input_size, teacher_num, args.dynamic).cuda()
     return agent, feature_dims
 
@@ -211,14 +219,35 @@ def main_worker(gpu, ngpus_per_node, args):
         for t_n, t_p in model.named_parameters():
             t_p.requires_grad = False
         return model
+    
+    # # 用于ImageNet的load_teacher函数
+    # def load_teacher(model_name, opt):
+    #     print(f"==> Loading teacher model: {model_name}")
+    #     model = TeacherWrapper(model_name=model_name, num_classes=opt.n_cls).cuda()
+    #     model.eval()
+    #     for t_n, t_p in model.named_parameters():
+    #         t_p.requires_grad = False
+    #     return model
 
 
     def load_teacher_list(opt):
         print('==> loading teacher model list')
         teacher_model_list = [load_teacher(teacher_model_path_dict[model_name], args.n_cls, model_name, opt)
                             for model_name in opt.teacher_name_list]
+        # teacher_model_list = [load_teacher(cifar10_teacher_model_path_dict[model_name], args.n_cls, model_name, opt)
+        #                     for model_name in opt.teacher_name_list]
         print('==> done')
         return teacher_model_list
+    
+    # # 用于ImageNet的load_teacher_list函数
+    # def load_teacher_list(opt):
+    #     # model_names = ['efficientnet_b0', 'regnety_004', 'mobilenetv3_large_100', 'resnet18']
+    #     model_names = ['efficientnet_b0', 'regnety_004', 'mobilenetv3_large_100']
+    #         # 上面这四个分别是timm中在ImageNet上预训练的各网络的名字('regnety_004'即RegNetY_400MF)
+    #     print('==> Loading teacher model list')
+    #     teacher_model_list = [load_teacher(model_name, opt) for model_name in model_names]
+    #     print('==> Done loading teacher models')
+    #     return teacher_model_list
 
     if args.dataset.startswith('cifar100'):
         args.n_cls = 100
@@ -226,8 +255,13 @@ def main_worker(gpu, ngpus_per_node, args):
     elif args.dataset.startswith('imagenet'):
         args.n_cls = 1000
         args.res = (1, 3, 224, 224)
+    elif args.dataset.startswith('cifar10'):
+        # 由于先判断过cifar100了，因此不会有cifar100被错误归类到cifar10
+        args.n_cls = 10
+        args.res = (1, 3, 32, 32)
             
     teacher_models = load_teacher_list(args)
+    # print(torch.cuda.memory_summary())
     
     ##### load student model #####
     model = model_dict[args.arch](num_classes=args.n_cls).cuda()
@@ -257,17 +291,22 @@ def main_worker(gpu, ngpus_per_node, args):
                 args.batch_size = int(args.batch_size / ngpus_per_node)
                 args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
                 model = torch.nn.parallel.DistributedDataParallel(model,device_ids=[args.gpu]) 
-                for teacher in teacher_models : 
-                    teacher = torch.nn.parallel.DistributedDataParallel(teacher,device_ids=[args.gpu])
+                # for teacher in teacher_models : 
+                #     teacher = torch.nn.parallel.DistributedDataParallel(teacher,device_ids=[args.gpu])
                 agent = torch.nn.parallel.DistributedDataParallel(agent,device_ids=[args.gpu])
-                
+                # NEW: feat_trans模块的载入各个GPU
+                feat_trans.cuda(args.gpu)
+                feat_trans = torch.nn.parallel.DistributedDataParallel(feat_trans,device_ids=[args.gpu])
             else:
                 model.cuda()
                 model = torch.nn.parallel.DistributedDataParallel(model)
                 for teacher in teacher_models :
                     teacher = teacher.cuda()
                 agent = agent.cuda()
-                agent = torch.nn.parallel.DistributedDataParallel(agent)  
+                agent = torch.nn.parallel.DistributedDataParallel(agent) 
+                # NEW: feat_trans模块的载入各个GPU
+                feat_trans.cuda()
+                feat_trans = torch.nn.parallel.DistributedDataParallel(feat_trans)
                 
     elif args.gpu is not None and torch.cuda.is_available():
         torch.cuda.set_device(args.gpu)
@@ -293,7 +332,7 @@ def main_worker(gpu, ngpus_per_node, args):
           
     criterion_list = nn.ModuleList([])
     criterion_ce = nn.CrossEntropyLoss().to(device)
-    criterion_div = DistillKL(args.kd_T).to(device)
+    criterion_div = DistillKL(args.kd_T).to(device) #这里的args.kd_T仅为初始蒸馏温度,后面将被动态替换
     criterion_list.append(criterion_ce)
     criterion_list.append(criterion_div)
 
@@ -301,15 +340,42 @@ def main_worker(gpu, ngpus_per_node, args):
     trainable_list.append(model)
     trainable_list.append(feat_trans)
 
+    #!!注：下面这个alpha参数是我新加的，用于将原先的总loss(见train_loop)变成loss = loss_cls + α*loss_kd + loss_feat。它是可训练参数。
+    #args.alpha = torch.nn.Parameter(torch.tensor(1.0, device=device, requires_grad=True))
+
     optimizer = optim.SGD(trainable_list.parameters(),
+                        #list(trainable_list.parameters()) + [args.alpha], #将alpha拼接进去,使其可被优化
                         lr=0.1, momentum=0.9, weight_decay=args.weight_decay, nesterov=True)
+    # args.init_lr = 0.001
+    # args.warmup_epochs = 10
+    # args.lr_type = 'cosine'
+    # optimizer = optim.AdamW(trainable_list.parameters(), lr=0.001, weight_decay=0.05)
+
     agent_optimizer = optim.SGD(agent.parameters(), lr=0.1, )
 
     ################### load data ###################
-    train_loader, val_loader = get_cifar100_dataloaders(data_folder=args.data,
+    
+    if args.dataset == 'cifar100':
+        train_loader, val_loader = get_cifar100_dataloaders(data_folder=args.data,
+                                                            batch_size=args.batch_size,
+                                                            num_workers=args.workers)
+    elif args.dataset == 'cifar10':
+        train_loader, val_loader = get_cifar10_dataloaders(data_folder=args.data,
+                                                            batch_size=args.batch_size,
+                                                            num_workers=args.workers)
+    '''
+    train_loader, val_loader = get_imagenet_dataloaders(data_folder='/data/shared/datasets/IMNET/ILSVRC2012',
                                                         batch_size=args.batch_size,
                                                         num_workers=args.workers)
-    
+    '''
+    '''
+    train_loader, val_loader, train_sampler = get_imagenet_dataloaders(data_folder='/data/shared/datasets/IMNET/ILSVRC2012',
+                                                        batch_size=args.batch_size,
+                                                        num_workers=args.workers,
+                                                        distributed=args.distributed,
+                                                        rank=args.rank,
+                                                        world_size=args.world_size)
+    '''
     ################### train model ###################
     best_acc = 0.  # best test accuracy
     
@@ -320,6 +386,10 @@ def main_worker(gpu, ngpus_per_node, args):
     args.logger.info('Teacher accruacy: '+ str(t_results))
 
     for epoch in range(args.start_epoch, args.epochs) :
+        # # 分布式训练新增
+        # if args.distributed:
+        #     train_sampler.set_epoch(epoch)  # Ensure shuffling is different for each epoch
+        
         train(train_loader, model, criterion_list, optimizer, epoch, device, args, agent, feat_trans, teacher_models, agent_optimizer)
         acc = test(epoch, model, device, val_loader, criterion_ce, args)
 
@@ -355,6 +425,8 @@ def main_worker(gpu, ngpus_per_node, args):
         args.logger.info('load pre-trained weights from: {}'.format(os.path.join(args.checkpoint_dir,  args.arch + '_best.pth.tar')))
 
 if __name__ == '__main__' :
+     #os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+     #os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
      main()
 
 

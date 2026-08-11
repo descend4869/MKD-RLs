@@ -13,6 +13,7 @@ import torch.backends.cudnn as cudnn
 
 from models import model_dict
 from dataset.cifar100 import get_cifar100_dataloaders
+from dataset.cifar10 import get_cifar10_dataloaders
 from helper.util import save_dict_to_json, reduce_tensor, adjust_learning_rate_cifar
 from helper.loops import train_vanilla as train, validate
 from utils import set_logger
@@ -38,9 +39,9 @@ def parse_option():
 
     # dataset
     parser.add_argument('--model', type=str, default='resnet110')
-    parser.add_argument('--dataset', type=str, default='cifar100', choices=['cifar100'], help='dataset')
-    parser.add_argument('--data-folder', type=str, default='/data/winycg/dataset', help='dataset path')
-    parser.add_argument('--checkpoint-dir', type=str, default='/data/winycg/checkpoints/mkd_checkpoints/', help='checkpoint dir')
+    parser.add_argument('--dataset', type=str, default='cifar100', choices=['cifar100', 'cifar10'], help='dataset')
+    parser.add_argument('--data-folder', type=str, default='/data/myh/datasets', help='dataset path')
+    parser.add_argument('--checkpoint-dir', type=str, default='/data/myh/checkpoints/mkd_checkpoints/', help='checkpoint dir')
     
     parser.add_argument('-t', '--trial', type=str, default='0', help='the experiment id')
     parser.add_argument('--dali', type=str, choices=['cpu', 'gpu'], default=None)
@@ -64,6 +65,9 @@ def parse_option():
 
     opt.model_path = os.path.join(opt.checkpoint_dir, './teachers/models')
     opt.tb_path = os.path.join(opt.checkpoint_dir, './teachers/tensorboard')
+    # # CIFAR-10测试时改用下面的路径
+    # opt.model_path = os.path.join(opt.checkpoint_dir, './teachers_cifar10/models')
+    # opt.tb_path = os.path.join(opt.checkpoint_dir, './teachers_cifar10/tensorboard')
 
     iterations = opt.lr_decay_epochs.split(',')
     opt.lr_decay_epochs = list([])
@@ -128,6 +132,7 @@ def main_worker(gpu, ngpus_per_node, opt):
     # model
     n_cls = {
         'cifar100': 100,
+        'cifar10': 10,
     }.get(opt.dataset, None)
     
     model = model_dict[opt.model](num_classes=n_cls)
@@ -169,6 +174,8 @@ def main_worker(gpu, ngpus_per_node, opt):
     # dataloader
     if opt.dataset == 'cifar100':
         train_loader, val_loader = get_cifar100_dataloaders(opt.data_folder, batch_size=opt.batch_size, num_workers=opt.num_workers)
+    elif opt.dataset == 'cifar10':
+        train_loader, val_loader = get_cifar10_dataloaders(opt.data_folder, batch_size=opt.batch_size, num_workers=opt.num_workers)
     else:
         raise NotImplementedError(opt.dataset)
 
