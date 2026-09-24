@@ -1,7 +1,6 @@
-'''RegNet in PyTorch.
-
+'''
+RegNet in PyTorch.
 Paper: "Designing Network Design Spaces".
-
 Reference: https://github.com/keras-team/keras-applications/blob/master/keras_applications/efficientnet.py
 '''
 import torch

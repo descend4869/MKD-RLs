@@ -1,4 +1,5 @@
-'''ShuffleNetV2 in PyTorch.
+'''
+ShuffleNetV2 in PyTorch.
 See the paper "ShuffleNet V2: Practical Guidelines for Efficient CNN Architecture Design" for more details.
 '''
 import torch

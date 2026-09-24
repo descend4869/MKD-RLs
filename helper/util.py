@@ -6,6 +6,7 @@ import numpy as np
 from collections import Counter
 import torch.distributed as dist
 
+
 LAYER = {'resnet20': np.arange(1, (20 - 2) // 2 + 1),  # 9
          'resnet56': np.arange(1, (56 - 2) // 2 + 1),  # 27
          'resnet110': np.arange(2, (110 - 2) // 2 + 1, 2),  # 27

@@ -11,7 +11,6 @@ __all__ = ['mobilenetv2_T_w', 'mobile_half']
 
 BN = None
 
-
 def conv_bn(inp, oup, stride):
     return nn.Sequential(
         nn.Conv2d(inp, oup, 3, stride, 1, bias=False),

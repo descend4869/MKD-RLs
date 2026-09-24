@@ -1,1 +1,1 @@
-from .feature_mse_mtkd_rl import FeatureKLLoss, FeatureMSELoss
+from .feature_mse_mtkd_rl import FeatureMSELoss, FeatureKLLoss
