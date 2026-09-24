@@ -1,4 +1,4 @@
-# Adaptive Teacher Weighting for Multi-Teacher Distillation with Soft Actor-Critic and Hierarchical Design for Visual Recognition
+# Adaptive Teacher Weighting for Multi-Teacher Distillation with Soft Actor-Critic and Hierarchical Design
 
 This project provides the source code of Multi-Teacher Knowledge Distillation with with Soft Actor-Critic and Hierarchical Design (MKD-RLs):
 
@@ -51,7 +51,6 @@ python train_student_rl.py \
     --dynamic \
     --checkpoint-dir [your checkpoint saved path] \
     --teacher-name-list [your teacher names, separated by spaces] \
-    --world-size 1 \
     --rank 0 
 ```
 
@@ -65,7 +64,7 @@ python train_student_rl.py \
 
 
 
-#### MTKD-SAC and MTKD-HRL (Ours)
+#### MTKD-SAC and MTKD-HP (Ours)
 
 ```
 python train_student_sac.py \
@@ -73,13 +72,10 @@ python train_student_sac.py \
     --arch [your student name] \
     --checkpoint-dir [your checkpoint saved path] \
     --teacher-name-list [your teacher names, separated by spaces] \
-    --world-size 1 \
     --rank 0 
 ```
 `train_student_sac.py` can be replaced by other python files: 
-* `train_student_sac2.py` uses critic-accelerated SAC
-* `train_student_hrl.py` only has KD temperature as high-level output
-* `train_student_hrl2.py` adds teacher importance in high-level output
+* `train_student_hp.py` adds high-level output
 
 
 

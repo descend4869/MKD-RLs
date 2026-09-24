@@ -22,7 +22,7 @@ def parse_option():
 
     parser = argparse.ArgumentParser('argument for training')
 
-    # baisc
+    # basic
     parser.add_argument('--print-freq', type=int, default=200, help='print frequency')
     parser.add_argument('--save_freq', type=int, default=40, help='save frequency')
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
@@ -54,7 +54,7 @@ def parse_option():
                          'multi node data parallel training')
     parser.add_argument('--dist-url', default='tcp://127.0.0.1:23451', type=str,
                     help='url used to set up distributed training')
-    
+
     opt = parser.parse_args()
 
     # set different learning rate from these 4 models
@@ -65,7 +65,6 @@ def parse_option():
 
     opt.model_path = os.path.join(opt.checkpoint_dir, './teachers/models')
     opt.tb_path = os.path.join(opt.checkpoint_dir, './teachers/tensorboard')
-    # # CIFAR-10测试时改用下面的路径
     # opt.model_path = os.path.join(opt.checkpoint_dir, './teachers_cifar10/models')
     # opt.tb_path = os.path.join(opt.checkpoint_dir, './teachers_cifar10/tensorboard')
 

@@ -29,7 +29,7 @@ from utils import set_logger
 from models.util import Regress, TransFeat
 
 
-parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
+parser = argparse.ArgumentParser(description='PyTorch Training')
 parser.add_argument('--data', metavar='DIR', nargs='?', default='imagenet',
                     help='path to dataset (default: imagenet)')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18_imagenet')
@@ -90,7 +90,6 @@ parser.add_argument('--init-lr', default=0.05, type=float, help='learning rate')
 parser.add_argument('--lr-type', default='multistep', type=str, help='learning rate strategy')
 parser.add_argument('--feat-kd', default='mse', type=str, help='feature kd loss')
 parser.add_argument('--kd-T', type=int, default=4, help='temperature')
-#parser.add_argument('--checkpoint-dir', default='./checkpoint', type=str, help='checkpoint directory')
 parser.add_argument('--checkpoint-dir', default='/data/myh/checkpoints/mkd_checkpoints/student_avg', type=str, help='checkpoint directory')
 parser.add_argument('--teacher-name-list', default=['resnet32x4', 'wrn_28_4'], type=str, nargs='+', help='teacher models')
 parser.add_argument('--dataset', type=str, default='cifar100', choices=['cifar100', 'imagenet', 'tinyimagenet', 'dogs', 'cub_200_2011', 'mit67'], help='dataset')
@@ -109,7 +108,6 @@ def main():
     print('args.teacher_name_str', args.teacher_name_str)
     args.teacher_num = len(args.teacher_name_list)
 
-    #注：下面这行的avg原先是rl,感觉是原先打错了.
     args.model_name = args.arch + '_'+ args.dataset+ '_'+ 'avg'+'_'+ args.trial+'_'+str(args.teacher_num)+'_'+args.teacher_name_str
 
     info_time = datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
@@ -337,8 +335,6 @@ def main_worker(gpu, ngpus_per_node, args):
         args.logger.info('load pre-trained weights from: {}'.format(os.path.join(args.checkpoint_dir,  args.arch + '_best.pth.tar')))
 
 if __name__ == '__main__' :
-     #os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
-     #torch.cuda.empty_cache()
      main()
 
 
@@ -346,5 +342,4 @@ if __name__ == '__main__' :
 
 
     
-
 

@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 
 def get_cifar10_dataloaders(data_folder, batch_size=128, num_workers=8):
     """
-    CIFAR-10 数据加载器
+    CIFAR-10 dataloader
     """
     train_transform = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
@@ -15,7 +15,6 @@ def get_cifar10_dataloaders(data_folder, batch_size=128, num_workers=8):
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
-    # 采用标准的CIFAR-10数据集的统计值，训练和测试使用同样的均值和标准差
 
     train_set = datasets.CIFAR10(root=data_folder,
                                  download=True,

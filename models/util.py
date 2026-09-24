@@ -133,7 +133,6 @@ class CalWeight(nn.Module):
         super(CalWeight, self).__init__()
 
         self.opt = opt
-        # student和teacher都用最后一层
         s_channel = feat_s.shape[1]
         print('s_channel', s_channel)
         for i in range(len(feat_t_list)):
@@ -162,7 +161,6 @@ class CalWeight(nn.Module):
 class TransFeat(nn.Module):
     def __init__(self, feat_s_size, feat_t_list_size):
         super(TransFeat, self).__init__()
-        # student和teacher都用最后一层
         s_channel = feat_s_size[1]
         self.feat_t_list_size = feat_t_list_size
         for i in range(len(feat_t_list_size)):
@@ -325,24 +323,3 @@ class PoolEmbed(nn.Module):
     def forward(self, x):
         return self.embed(x)
 
-
-if __name__ == '__main__':
-    import torch
-
-    g_s = [
-        torch.randn(2, 16, 16, 16),
-        torch.randn(2, 32, 8, 8),
-        torch.randn(2, 64, 4, 4),
-    ]
-    g_t = [
-        torch.randn(2, 32, 16, 16),
-        torch.randn(2, 64, 8, 8),
-        torch.randn(2, 128, 4, 4),
-    ]
-    s_shapes = [s.shape for s in g_s]
-    t_shapes = [t.shape for t in g_t]
-
-    net = ConnectorV2(s_shapes, t_shapes)
-    out = net(g_s)
-    for f in out:
-        print(f.shape)

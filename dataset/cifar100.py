@@ -57,8 +57,6 @@ class CIFAR100Instance(CIFAR100BackCompat):
         
         img, target = self.data[index], self.targets[index]
 
-        # doing this so that it is consistent with all other datasets
-        # to return a PIL Image
         img = Image.fromarray(img)
 
         if self.transform is not None:
@@ -160,8 +158,6 @@ class CIFAR100InstanceSample(CIFAR100BackCompat):
         
         img, target = self.data[index], self.targets[index]
         
-        # doing this so that it is consistent with all other datasets
-        # to return a PIL Image
         img = Image.fromarray(img)
 
         if self.transform is not None:

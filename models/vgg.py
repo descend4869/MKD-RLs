@@ -1,11 +1,3 @@
-'''
-Three FC layers of VGG-ImageNet are replaced with single one, 
-thus the total layer number should be reduced by two on CIFAR-100. 
-For example, the actual number of layers for VGG-8 is 6.
-
-VGG for CIFAR10. FC layers are removed.
-(c) YANG, Wei
-'''
 import math
 import torch.nn as nn
 import torch.nn.functional as F

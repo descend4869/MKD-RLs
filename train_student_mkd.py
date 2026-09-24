@@ -1,10 +1,3 @@
-# New
-# 复制train_student_rl.py后删除agent相关代码，也参考了train_student_avg.py，并新增一些其它代码后得来
-# 为了将较优的多教师知识蒸馏优化方案CA-MKD作为实验结果的一个参考而新增
-# 参考了CA-MKD论文以及相关代码
-# 值得注意的是，我进行了一些简化: 将论文中的特征权重w^k_inter直接用计算较为简单的w^k_KD代替，从而较大地简化了代码.
-# 其实原论文中也有提到这个想法(4.4 Ablation Study(3))，由此也可看出这个简化应该影响不大，没有改变论文的核心思想.
-
 import argparse
 import os
 import random
@@ -29,7 +22,7 @@ import timm
 
 
 from train_loops import train, test
-from train_loops_mkd import train_camkd
+from train_loops_mkd import train_camkd, train_mmkd, MMKDLogitsWeight, MMKDFeatureWeight
 from torch.utils.tensorboard import SummaryWriter
 from models import model_dict
 from setting import  teacher_model_path_dict
@@ -39,7 +32,7 @@ from models.util import Regress, TransFeat
 from models.TeacherWrapper import TeacherWrapper
 
 
-parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
+parser = argparse.ArgumentParser(description='PyTorch Training')
 parser.add_argument('--data', metavar='DIR', nargs='?', default='imagenet',
                     help='path to dataset (default: imagenet)')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18_imagenet')
@@ -74,8 +67,6 @@ parser.add_argument('--world-size', default=-1, type=int,
                     help='number of nodes for distributed training')
 parser.add_argument('--rank', default=-1, type=int,
                     help='node rank for distributed training')
-# parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
-#                     help='url used to set up distributed training')
 parser.add_argument('--dist-url', default='tcp://127.0.0.1:23456', type=str,
                     help='url used to set up distributed training')
 parser.add_argument('--dist-backend', default='nccl', type=str,
@@ -90,10 +81,6 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'fastest way to use PyTorch for either single node or '
                          'multi node data parallel training')
 parser.add_argument('--dummy', action='store_true', help="use fake data to benchmark")
-# parser.add_argument('--dynamic', action='store_true', help="use dynamic weight aggregation strategy")
-# parser.add_argument('--ce-weight', type=float, default=1, help='ce loss coefficient')
-# parser.add_argument('--kd-weight', type=float, default=1, help='kd loss coefficient')
-# parser.add_argument('--feat-weight', type=float, default=5, help='kd loss coefficient')
 
 
 import models
@@ -103,12 +90,20 @@ parser.add_argument('--init-lr', default=0.05, type=float, help='learning rate')
 parser.add_argument('--lr-type', default='multistep', type=str, help='learning rate strategy')
 parser.add_argument('--feat-kd', default='mse', type=str, help='feature kd loss')
 parser.add_argument('--kd-T', type=int, default=4, help='temperature')
-# parser.add_argument('--agent-step', type=int, default=1000, help='agent optimization step')
-#parser.add_argument('--checkpoint-dir', default='./checkpoint', type=str, help='checkpoint directory')
-parser.add_argument('--checkpoint-dir', default='/data/myh/checkpoints/mkd_checkpoints/student_camkd', type=str, help='checkpoint directory')
+parser.add_argument('--checkpoint-dir', default='/data/myh/checkpoints/mkd_checkpoints/mkd', type=str, help='checkpoint directory')
 parser.add_argument('--teacher-name-list', default=['resnet32x4', 'wrn_28_4'], type=str, nargs='+', help='teacher models')
 parser.add_argument('--dataset', type=str, default='cifar100', choices=['cifar100', 'imagenet', 'tinyimagenet', 'dogs', 'cub_200_2011', 'mit67'], help='dataset')
 parser.add_argument('--trial', type=str, default='1', help='trial id')
+parser.add_argument('--method', type=str, default='camkd', choices=['camkd', 'mmkd'],
+                    help='multi-teacher KD method')
+parser.add_argument('--meta-lr', type=float, default=1e-3,
+                    help='learning rate for MMKD meta-weight networks')
+parser.add_argument('--meta-wd', type=float, default=1e-4,
+                    help='weight decay for MMKD meta-weight networks')
+parser.add_argument('--meta-freq', type=int, default=5,
+                    help='update MMKD meta-weight networks every N batches')
+parser.add_argument('--meta-warmup', type=int, default=0,
+                    help='student-only warmup epochs before MMKD meta updates')
 
 
 def main():
@@ -117,7 +112,7 @@ def main():
     print('args.teacher_name_str', args.teacher_name_str)
     args.teacher_num = len(args.teacher_name_list)
 
-    args.model_name = args.arch + '_'+ args.dataset+ '_'+ 'camkd'+'_'+ args.trial+'_'+str(args.teacher_num)+'_'+args.teacher_name_str
+    args.model_name = args.arch + '_'+ args.dataset+ '_'+ args.method+'_'+ args.trial+'_'+str(args.teacher_num)+'_'+args.teacher_name_str
 
     info_time = datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
     info = args.model_name + info_time
@@ -256,7 +251,6 @@ def main_worker(gpu, ngpus_per_node, args):
                 model = torch.nn.parallel.DistributedDataParallel(model,device_ids=[args.gpu]) 
                 # for teacher in teacher_models : 
                 #     teacher = torch.nn.parallel.DistributedDataParallel(teacher,device_ids=[args.gpu])
-                # NEW: feat_trans模块的载入各个GPU
                 feat_trans.cuda(args.gpu)
                 feat_trans = torch.nn.parallel.DistributedDataParallel(feat_trans,device_ids=[args.gpu])
             else:
@@ -264,7 +258,6 @@ def main_worker(gpu, ngpus_per_node, args):
                 model = torch.nn.parallel.DistributedDataParallel(model)
                 for teacher in teacher_models :
                     teacher = teacher.cuda()
-                # NEW: feat_trans模块的载入各个GPU
                 feat_trans.cuda()
                 feat_trans = torch.nn.parallel.DistributedDataParallel(feat_trans)
                 
@@ -301,12 +294,27 @@ def main_worker(gpu, ngpus_per_node, args):
 
 
     optimizer = optim.SGD(trainable_list.parameters(),
-                        #list(trainable_list.parameters()) + [args.alpha], #将alpha拼接进去,使其可被优化
                         lr=0.1, momentum=0.9, weight_decay=args.weight_decay, nesterov=True)
     # args.init_lr = 0.001
     # args.warmup_epochs = 10
     # args.lr_type = 'cosine'
     # optimizer = optim.AdamW(trainable_list.parameters(), lr=0.001, weight_decay=0.05)
+
+    # MMKD's two meta-weight networks are optimized separately from the student.
+    weight_logits = weight_feature = weight_optimizer = None
+    if args.method == 'mmkd':
+        weight_logits = MMKDLogitsWeight(args.n_cls, args.teacher_num).to(device)
+        weight_feature = MMKDFeatureWeight(args.batch_size, args.teacher_num).to(device)
+        weight_optimizer = optim.Adam(
+            list(weight_logits.parameters()) + list(weight_feature.parameters()),
+            lr=args.meta_lr, weight_decay=args.meta_wd)
+        if len(args.resume) != 0:
+            if 'weight_logits' in model_info_dict:
+                weight_logits.load_state_dict(model_info_dict['weight_logits'])
+            if 'weight_feature' in model_info_dict:
+                weight_feature.load_state_dict(model_info_dict['weight_feature'])
+            if 'weight_optimizer' in model_info_dict:
+                weight_optimizer.load_state_dict(model_info_dict['weight_optimizer'])
 
 
     ################### load data ###################
@@ -314,11 +322,7 @@ def main_worker(gpu, ngpus_per_node, args):
     train_loader, val_loader = get_cifar100_dataloaders(data_folder=args.data,
                                                         batch_size=args.batch_size,
                                                         num_workers=args.workers)
-    '''
-    train_loader, val_loader = get_imagenet_dataloaders(data_folder='/data/shared/datasets/IMNET/ILSVRC2012',
-                                                        batch_size=args.batch_size,
-                                                        num_workers=args.workers)
-    '''
+    
     ################### train model ###################
     best_acc = 0.  # best test accuracy
     
@@ -330,7 +334,13 @@ def main_worker(gpu, ngpus_per_node, args):
 
     for epoch in range(args.start_epoch, args.epochs) :
         
-        train_camkd(train_loader, model, criterion_list, optimizer, epoch, device, args, feat_trans, teacher_models)
+        if args.method == 'mmkd':
+            train_mmkd(train_loader, model, criterion_list, optimizer, epoch, device,
+                       args, feat_trans, teacher_models, weight_logits,
+                       weight_feature, weight_optimizer)
+        else:
+            train_camkd(train_loader, model, criterion_list, optimizer, epoch, device,
+                        args, feat_trans, teacher_models)
         acc = test(epoch, model, device, val_loader, criterion_ce, args)
 
         if args.rank == 0 :
@@ -342,6 +352,10 @@ def main_worker(gpu, ngpus_per_node, args):
                     'epoch': epoch,
                     'optimizer': optimizer.state_dict()
             }
+            if args.method == 'mmkd':
+                state['weight_logits'] = weight_logits.state_dict()
+                state['weight_feature'] = weight_feature.state_dict()
+                state['weight_optimizer'] = weight_optimizer.state_dict()
 
             torch.save(state, os.path.join(args.checkpoint_dir, args.arch+'.pth.tar'))
 
@@ -365,8 +379,6 @@ def main_worker(gpu, ngpus_per_node, args):
         args.logger.info('load pre-trained weights from: {}'.format(os.path.join(args.checkpoint_dir,  args.arch + '_best.pth.tar')))
 
 if __name__ == '__main__' :
-     #os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-     #torch.cuda.empty_cache()
      main()
 
 
@@ -374,5 +386,3 @@ if __name__ == '__main__' :
 
 
     
-
-

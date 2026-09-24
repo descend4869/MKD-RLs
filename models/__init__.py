@@ -6,6 +6,7 @@ from .mobilenetv2 import mobile_half, mobilenet
 from .ShuffleNetv1 import ShuffleV1
 from .ShuffleNetv2 import ShuffleV2, ShuffleV2_0_5
 from .regnet import RegNetY_400MF, RegNetX_400MF,  RegNetX_200MF
+from .regnet_imagenet import RegNetX_200MF_ImageNet
 from .policy import Policy, PolicyTrans, HighAgent, HighAgent2
 from .SAC import SACActor, SACCritic, ReplayBuffer
 from .MobileViT import mobilevit
@@ -42,13 +43,12 @@ model_dict = {
     'RegNetY_400MF': RegNetY_400MF, 
     'RegNetX_400MF': RegNetX_400MF,  
     'RegNetX_200MF': RegNetX_200MF,
+    'RegNetX_200MF_ImageNet': RegNetX_200MF_ImageNet,
     'Policy': Policy,
     'PolicyTrans': PolicyTrans,
-    #下面是我新加的
     'SACActor': SACActor,
     'SACCritic': SACCritic,
-    #'ReplayBuffer': ReplayBuffer
     'HighAgent': HighAgent,
     'HighAgent2': HighAgent2,
-    'MobileViT': mobilevit
+    'MobileViT': mobilevit,
 }

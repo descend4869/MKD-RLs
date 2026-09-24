@@ -150,7 +150,6 @@ def adjust_lr(optimizer, epoch, args):
 
         return cur_lr
     
-# New: 用于学生模型为ViT架构时的学习率调整函数，新增了warm_up阶段
 def adjust_lr_vit(optimizer, epoch, args):
     cur_lr = 0.
 
@@ -223,3 +222,116 @@ def set_logger(filename, name='experiments'):
     logger.addHandler(console)
     
     return logger
+
+def corrupt_teacher_supervision(
+        teacher_logits,
+        teacher_features,
+        teacher_embeddings,
+        corruption_rate,
+        teacher_idx=0):
+    """
+    Replace part of one teacher's supervision with another sample's supervision. 
+    """
+
+    if corruption_rate <= 0:
+        return
+
+    if not 0.0 <= corruption_rate <= 1.0:
+        raise ValueError('corruption_rate must be in [0, 1]')
+
+    if not 0 <= teacher_idx < len(teacher_logits):
+        raise IndexError('teacher_idx is out of range')
+
+    batch_size = teacher_logits[teacher_idx].size(0)
+    if batch_size < 2:
+        return
+
+    device = teacher_logits[teacher_idx].device
+
+    # Select the samples whose teacher supervision will be corrupted.
+    corrupt_mask = torch.rand(batch_size, device=device) < corruption_rate
+    if not corrupt_mask.any():
+        return
+
+    # A random non-zero cyclic shift guarantees donor_index[i] != i.
+    shift = torch.randint(1, batch_size, (), device=device)
+    donor_index = (
+        torch.arange(batch_size, device=device) + shift
+    ) % batch_size
+
+    def replace_samples(tensor_list):
+        original = tensor_list[teacher_idx]
+        corrupted = original.clone()
+        corrupted[corrupt_mask] = original[donor_index[corrupt_mask]]
+        return corrupted
+
+    teacher_logits[teacher_idx] = replace_samples(teacher_logits)
+    teacher_features[teacher_idx] = replace_samples(teacher_features)
+    teacher_embeddings[teacher_idx] = replace_samples(teacher_embeddings)
+
+
+def compute_and_plot_feature_similarity_map(model, feat_trans, teacher_models,
+                                            data_loader, device, num_classes,
+                                            teacher_names, save_path):
+    """
+    Compute class-wise aligned feature cosine similarities and save a heatmap.
+    """
+    import matplotlib
+    matplotlib.use('Agg', force=True)
+    import matplotlib.pyplot as plt
+
+    modules = [model, feat_trans] + list(teacher_models)
+    training_states = [module.training for module in modules]
+    for module in modules:
+        module.eval()
+
+    similarity_sums = torch.zeros(num_classes, len(teacher_models), device=device)
+    class_counts = torch.zeros(num_classes, device=device)
+
+    try:
+        with torch.no_grad():
+            for inputs, targets in data_loader:
+                inputs = inputs.to(device, non_blocking=True)
+                targets = targets.to(device, non_blocking=True)
+
+                student_features, _ = model(inputs, is_feat=True)
+                aligned_student_features = feat_trans(student_features[-2])
+                class_counts.index_add_(
+                    0, targets, torch.ones_like(targets, dtype=torch.float32))
+
+                for teacher_idx, teacher_model in enumerate(teacher_models):
+                    teacher_features, _ = teacher_model(inputs, is_feat=True)
+                    similarities = F.cosine_similarity(
+                        aligned_student_features[teacher_idx].flatten(1),
+                        teacher_features[-2].flatten(1), dim=1, eps=1e-8)
+                    similarity_sums[:, teacher_idx].index_add_(0, targets, similarities)
+    finally:
+        for module, was_training in zip(modules, training_states):
+            module.train(was_training)
+
+    similarity_map = (similarity_sums / class_counts.clamp_min(1).unsqueeze(1)).cpu().numpy()
+    class_names = getattr(data_loader.dataset, 'classes', None)
+    if class_names is None or len(class_names) != num_classes:
+        class_names = ['C{}'.format(class_idx) for class_idx in range(num_classes)]
+    teacher_labels = [
+        'T{} ({})'.format(teacher_idx + 1, teacher_names[teacher_idx])
+        for teacher_idx in range(len(teacher_models))
+    ]
+
+    figure_height = min(max(8, 0.08 * num_classes + 2), 11)
+    figure, axis = plt.subplots(
+        figsize=(max(6.5, 1.6 * len(teacher_models)), figure_height))
+    image = axis.imshow(similarity_map, aspect='auto', cmap='coolwarm', vmin=0.7, vmax=0.95)
+    axis.set_xlabel('Teacher')
+    axis.set_ylabel('Class')
+    axis.set_xticks(range(len(teacher_models)))
+    axis.set_xticklabels(teacher_labels, rotation=30, ha='right')
+    axis.set_yticks(range(num_classes))
+    axis.set_yticklabels(class_names, fontsize=5)
+    axis.set_title('Class-wise student-teacher feature similarity')
+    figure.colorbar(image, ax=axis, label='Mean cosine similarity')
+    figure.tight_layout()
+    figure.savefig(save_path, dpi=300)
+    plt.close(figure)
+
+    return similarity_map
