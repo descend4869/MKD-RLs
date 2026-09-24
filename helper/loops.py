@@ -11,7 +11,6 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from .util import AverageMeter, accuracy, reduce_tensor, adjust_learning_rate, accuracy_list
 
-
 def train_vanilla(epoch, train_loader, model, criterion, optimizer, opt):
     """vanilla training"""
     # Create a GradScaler for mixed precision training

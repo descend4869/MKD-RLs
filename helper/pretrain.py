@@ -7,7 +7,6 @@ import torch.optim as optim
 import torch.backends.cudnn as cudnn
 from .util import AverageMeter
 
-
 def init(model_s, model_t, init_modules, criterion, train_loader, logger, opt):
     model_t.eval()
     model_s.eval()
