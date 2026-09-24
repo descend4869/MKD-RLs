@@ -12,7 +12,7 @@ Python 3.9
 
 CUDA 11.8
 
-you can install python packages by:
+you can install python packages by: 
 
 ```
 pip install -r requirements.txt
