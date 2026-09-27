@@ -1,6 +1,6 @@
 # Adaptive Teacher Weighting for Multi-Teacher Distillation with Soft Actor-Critic and Hierarchical Design
 
-This project provides the source code of Multi-Teacher Knowledge Distillation with with Soft Actor-Critic and Hierarchical Design (MKD-RLs):
+This project provides the demo code of Multi-Teacher Knowledge Distillation with Soft Actor-Critic and Hierarchical Design (MKD-RLs):
 
 ## Installation
 
